@@ -1,17 +1,41 @@
+from pydantic_settings import BaseSettings
+from typing import Optional
+import secrets
 import os
-from dotenv import load_dotenv
 
-load_dotenv()
-
-class Settings:
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "open-ai-key")
-    CHROMA_PERSIST_DIRECTORY: str = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_db")
-    MAX_CHUNK_SIZE: int = int(os.getenv("MAX_CHUNK_SIZE", "1000"))
-    CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "200"))
+class Settings(BaseSettings):
+    # API Settings
+    API_V1_STR: str = "/api/v1"
+    PROJECT_NAME: str = "Hybrid RAG System"
     
-    # Validate required settings
-    def __post_init__(self):
-        if not self.OPENAI_API_KEY:
-            raise ValueError("OPENAI_API_KEY is required")
+    # OpenAI Settings
+    OPENAI_API_KEY: str="open-ai-key"
+    
+    # Vector Store Settings
+    CHROMA_PERSIST_DIRECTORY: str = "chroma_db/"
+    
+    # Document Processing Settings
+    MAX_CHUNK_SIZE: int = 1000
+    CHUNK_OVERLAP: int = 200
+    
+    # Security Settings
+    SECRET_KEY: str = secrets.token_urlsafe(32)
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    
+    # CORS Settings
+    BACKEND_CORS_ORIGINS: list = ["*"]
+    
+    # Database Settings
+    DATABASE_URL: str = "sqlite:///./data/app.db"  # Default to SQLite
+    DB_TYPE: str = "sqlite"  # or "postgresql"
+    
+    # Create data directory if it doesn't exist
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        os.makedirs("data", exist_ok=True)
+    
+    class Config:
+        env_file = ".env"
 
 settings = Settings()
