@@ -17,6 +17,7 @@ import traceback
 from app.db.database import get_db
 from app.services.vector_store import VectorStore
 from app.services.retriever import HybridRetriever
+from app.models.chat import ChatSession
 
 # Configure logging
 logging.basicConfig(
@@ -44,8 +45,8 @@ class RAGService:
                 persist_directory=settings.CHROMA_PERSIST_DIRECTORY
             ))
             self.collection = self.client.get_or_create_collection(
-                name="documents",
-                metadata={"hnsw:space": "cosine"}
+                name=settings.CHROMA_COLLECTION_NAME,
+                metadata={"hnsw:space": settings.CHROMA_SPACE}
             )
             logger.info("ChromaDB initialized successfully")
         except Exception as e:
@@ -65,15 +66,20 @@ class RAGService:
             if not os.path.exists(file_path):
                 raise FileNotFoundError(f"File not found: {file_path}")
             
+            # Check file extension
+            file_ext = os.path.splitext(file_path)[1].lower()
+            if file_ext not in settings.ALLOWED_FILE_TYPES:
+                raise ValueError(f"Unsupported file type: {file_ext}. Allowed types: {settings.ALLOWED_FILE_TYPES}")
+            
             # Determine file type and load document
-            if file_path.endswith('.pdf'):
+            if file_ext == '.pdf':
                 logger.debug("Using PyPDFLoader for PDF file")
                 try:
                     loader = PyPDFLoader(file_path)
                 except Exception as e:
                     logger.error(f"Error creating PyPDFLoader: {str(e)}")
                     raise
-            elif file_path.endswith('.docx'):
+            elif file_ext == '.docx':
                 logger.debug("Using Docx2txtLoader for DOCX file")
                 try:
                     loader = Docx2txtLoader(file_path)
@@ -106,7 +112,8 @@ class RAGService:
             for chunk in chunks:
                 chunk.metadata.update({
                     "source": file_path,
-                    "chunk_size": len(chunk.page_content)
+                    "chunk_size": settings.MAX_CHUNK_SIZE,
+                    "chunk_overlap": settings.CHUNK_OVERLAP
                 })
             
             return chunks
@@ -169,70 +176,139 @@ class RAGService:
             logger.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail=f"Error processing files: {str(e)}")
 
+    async def is_chat_history_relevant(self, query: str, session: ChatSession) -> bool:
+        """Use OpenAI to determine if chat history is relevant to the current query"""
+        try:
+            if not session or not session.messages:
+                return False
+
+            # Format chat history for analysis
+            chat_context = "\n".join([
+                f"{'User' if msg.role == 'user' else 'Assistant'}: {msg.content}"
+                for msg in session.messages[-3:]  # Last 3 messages
+            ])
+
+            # Create prompt for relevance check
+            prompt = f"""Analyze if the following chat history is relevant to the user's current question.
+            Consider:
+            1. If the current question refers to or builds upon previous conversation
+            2. If the context from previous messages would help answer the current question
+            3. If the question is a follow-up or clarification of previous topics
+
+            Chat History:
+            {chat_context}
+
+            Current Question: {query}
+
+            Respond with only 'yes' if the chat history is relevant, or 'no' if it's not relevant."""
+
+            # Call OpenAI API for relevance check
+            response = self.openai_client.chat.completions.create(
+                model=settings.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that determines if chat history is relevant to a current question."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,  # Low temperature for more consistent responses
+                max_tokens=10  # We only need a yes/no response
+            )
+
+            # Get and clean the response
+            relevance_response = response.choices[0].message.content.strip().lower()
+            logger.info(f"Chat history relevance check response: {relevance_response}")
+            
+            return relevance_response.startswith('yes')
+
+        except Exception as e:
+            logger.error(f"Error checking chat history relevance: {str(e)}")
+            logger.error(traceback.format_exc())
+            return False  # Default to not using chat history if there's an error
+
     async def query(self, query: str, session_id: str, user_id: str) -> str:
         """Query the RAG system"""
         try:
-            # Get recent chat history (last 5 messages)
-            chat_history = self.chat_service.get_session_messages(session_id, user_id, limit=5)
+            # Get chat history
+            session = self.chat_service.get_session(session_id, user_id)
+            if not session:
+                raise ValueError("Session not found or does not belong to user")
             
-            # Get collection stats
-            stats = self.vector_store.get_collection_stats()
-            if stats["document_count"] == 0:
-                return "I am a RAG system. Please upload some documents first so I can answer your questions."
+            logger.info(f"Retrieved chat session: {session.id}")
+            
+            # Check if chat history is relevant
+            is_relevant = await self.is_chat_history_relevant(query, session)
+            logger.info(f"Chat history relevance check result: {is_relevant}")
+            
+            # Get chat history for context
+            chat_history = session.messages[-5:] if is_relevant else []  # Last 5 messages if relevant
+            logger.info(f"Retrieved {len(chat_history)} messages from chat history")
+            
+            # Format last 3 messages for context
+            chat_context = ""
+            if is_relevant and chat_history:
+                chat_context = "\n".join([
+                    f"{'User' if msg.role == 'user' else 'Assistant'}: {msg.content}"
+                    for msg in chat_history[-3:]  # Last 3 messages
+                ])
+                logger.info(f"Formatted chat context: {chat_context}")
+            
+            # Combine query with chat context if relevant
+            enhanced_query = f"{query}\nContext from previous conversation:\n{chat_context}" if is_relevant else query
+            logger.info(f"Enhanced query: {enhanced_query}")
             
             # Perform hybrid search
-            results = await self.retriever.search(
-                query=query,
-                top_k=5,
-                use_hybrid=True
-            )
+            results = await self.retriever.search(enhanced_query)
+            logger.info(f"Retrieved {len(results)} documents from hybrid search")
             
             if not results:
-                return "I couldn't find any relevant information in the documents to answer your question."
+                return "I don't have enough information to answer your question. Please upload some documents first."
             
-            # Format the retrieved context
+            # Format context from retrieved documents (each result is a tuple of (Document, score))
             context = "\n\n".join([doc.page_content for doc, _ in results])
+            logger.info(f"Formatted context from {len(results)} documents")
             
-            # Format chat history
+            # Format chat history for the prompt
             chat_history_text = ""
-            if chat_history:
+            if is_relevant and chat_history:
                 chat_history_text = "\n".join([
                     f"{'User' if msg.role == 'user' else 'Assistant'}: {msg.content}"
                     for msg in chat_history
                 ])
+                logger.info(f"Formatted chat history for prompt: {chat_history_text}")
             
-            # Prepare the prompt for OpenAI
-            prompt = f"""You are a helpful AI assistant. Use the following context and chat history to answer the user's question.
-            If the context doesn't contain relevant information, say so.
-
-            Context from documents:
+            # Create prompt with chat history if relevant
+            prompt = f"""Use the following pieces of context to answer the question at the end.
+            If you don't know the answer, just say that you don't know, don't try to make up an answer.
+            
+            Context:
             {context}
-
-            Recent chat history:
-            {chat_history_text}
-
-            User's question: {query}
-
-            Please provide a clear and concise answer based on the context and chat history:"""
-
-            # Call OpenAI API
+            
+            {f'Previous conversation: {chat_history_text} ' if is_relevant else ''}
+            
+            Question: {query}
+            
+            Answer:"""
+            
+            logger.info("Sending prompt to OpenAI")
+            
+            # Get response from OpenAI
             response = self.openai_client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model=settings.OPENAI_MODEL,
                 messages=[
-                    {"role": "system", "content": "You are a helpful AI assistant that answers questions based on provided context and chat history."},
+                    {"role": "system", "content": "You are a helpful assistant that answers questions based on the provided context."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.1,
-                max_tokens=500
+                temperature=0.7
             )
             
-            # Extract and return the response
-            return response.choices[0].message.content.strip()
+            answer = response.choices[0].message.content
+            logger.info(f"Received response from OpenAI: {answer}")
+            
+            return answer
             
         except Exception as e:
-            logger.error(f"Error processing query: {str(e)}")
+            logger.error(f"Error in RAG query: {str(e)}")
             logger.error(traceback.format_exc())
-            raise
+            raise HTTPException(status_code=500, detail=str(e))
 
     def get_document_count(self) -> int:
         """Get the number of loaded documents"""
