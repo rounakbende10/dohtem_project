@@ -1,4 +1,4 @@
-# System Enhancements Documentation
+# Section 3
 
 ## 1. Handling Duplicate Documents
 
