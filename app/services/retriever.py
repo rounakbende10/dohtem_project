@@ -33,12 +33,11 @@ class HybridRetriever:
         tokenized_query = query.split()
         scores = self.bm25.get_scores(tokenized_query)
         
-        # Get top-k results
         top_indices = np.argsort(scores)[::-1][:top_k]
         
         results = []
         for idx in top_indices:
-            if scores[idx] > 0:  # Only include results with positive scores
+            if scores[idx] > 0:
                 results.append((self.documents[idx], float(scores[idx])))
         
         return results
@@ -55,15 +54,12 @@ class HybridRetriever:
         bm25_weight: float = 0.4
     ) -> List[Tuple[Document, float]]:
         
-        # Perform both searches
         vector_results = await self.vector_search(query, top_k * 2)
         bm25_results = await self.bm25_search(query, top_k * 2)
         
-        # Create dictionaries for easier lookup
         vector_scores = {doc.page_content: score for doc, score in vector_results}
         bm25_scores = {doc.page_content: score for doc, score in bm25_results}
         
-        # Normalize scores to 0-1 range
         if vector_scores:
             max_vector_score = max(vector_scores.values())
             min_vector_score = min(vector_scores.values())
@@ -82,7 +78,6 @@ class HybridRetriever:
                     for text, score in bm25_scores.items()
                 }
         
-        # Combine results
         combined_results = {}
         all_docs = {doc.page_content: doc for doc, _ in vector_results + bm25_results}
         
@@ -90,11 +85,9 @@ class HybridRetriever:
             vector_score = vector_scores.get(text, 0)
             bm25_score = bm25_scores.get(text, 0)
             
-            # Calculate hybrid score
             hybrid_score = vector_weight * vector_score + bm25_weight * bm25_score
             combined_results[text] = (doc, hybrid_score)
         
-        # Sort by combined score and return top-k
         sorted_results = sorted(
             combined_results.values(), 
             key=lambda x: x[1], 
