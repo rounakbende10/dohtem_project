@@ -2,6 +2,35 @@
 
 A robust Retrieval-Augmented Generation (RAG) system that combines vector search with BM25 for improved document retrieval and response generation. The system uses ChromaDB for vector storage, OpenAI for embeddings and LLM, and includes chat history integration for context-aware responses.
 
+## Architecture
+
+![System Architecture](/architecture.png)
+
+The architecture consists of several key components:
+
+1. **Client Layer**
+   - Client applications making HTTP requests
+   - Interacts with the API endpoints
+
+2. **API Layer**
+   - FastAPI application handling HTTP requests
+   - API routes for different functionalities
+   - Pydantic models for request/response validation
+
+3. **Core Services**
+   - **RAG Service**: Main service handling document processing and querying
+   - **Chat Service**: Manages chat sessions and messages
+   - **Vector Store**: Handles vector storage and retrieval
+   - **Hybrid Retriever**: Combines vector and BM25 search
+
+4. **External Services**
+   - **OpenAI API**: Provides embeddings and LLM capabilities
+   - **ChromaDB**: Vector database for document storage
+
+5. **Data Layer**
+   - **SQLite Database**: Stores chat sessions and messages
+   - **File System**: Stores uploaded documents
+
 ## Features
 
 - **Document Processing**
