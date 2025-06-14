@@ -7,7 +7,7 @@
 - Documents are identified by their content hash in the vector store
 - Metadata is preserved for tracking document sources and versions
 
-### Recommended Improvements
+### Improvement Methods
 1. **Content-Based Deduplication**
    - Implement semantic similarity threshold (e.g., 0.95) to identify near-duplicates
    - Use document embeddings to compare similarity scores
@@ -63,7 +63,7 @@
 - Documents are stored with timestamps
 - Basic recency-based retrieval in hybrid search
 
-### Recommended Improvements
+### Improvement Methods
 1. **Time-Based Weighting**
    - Implement exponential decay for document relevance scores
    - Formula: `score = base_score * e^(-λ * time_difference)`
@@ -113,7 +113,7 @@
 - Basic logging of operations
 - Error tracking and reporting
 
-### Recommended Improvements
+### Improvement Methods
 1. **Response Quality Metrics**
    - Implement ROUGE/L/BERT scores for response evaluation
    - Track answer relevance and completeness
@@ -175,11 +175,3 @@
    - Resource Not Found (2%)
    - System Error (1%)
    ```
-
-## Next Steps
-
-1. Implement basic metrics collection
-2. Add document version tracking
-3. Set up monitoring infrastructure
-4. Create performance baseline
-5. Implement gradual improvements based on metrics 
