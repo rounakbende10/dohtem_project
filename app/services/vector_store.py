@@ -19,7 +19,7 @@ class VectorStore:
         # Initialize Langchain Chroma wrapper
         self.vectorstore = Chroma(
             client=self.client,
-            collection_name="documents",
+            collection_name=settings.CHROMA_COLLECTION_NAME,
             embedding_function=self.embeddings,
             persist_directory=settings.CHROMA_PERSIST_DIRECTORY
         )
@@ -59,7 +59,7 @@ class VectorStore:
         )
     
     async def get_all_documents(self) -> List[Document]:
-        collection = self.client.get_collection("documents")
+        collection = self.client.get_collection(settings.CHROMA_COLLECTION_NAME)
         results = collection.get()
         
         documents = []
@@ -74,13 +74,13 @@ class VectorStore:
     
     async def delete_collection(self) -> None:
         try:
-            self.client.delete_collection("documents")
+            self.client.delete_collection(settings.CHROMA_COLLECTION_NAME)
         except Exception as e:
             print(f"Error deleting collection: {e}")
     
     def get_collection_stats(self) -> Dict[str, Any]:
         try:
-            collection = self.client.get_collection("documents")
+            collection = self.client.get_collection(settings.CHROMA_COLLECTION_NAME)
             return {
                 "document_count": collection.count(),
                 "collection_name": collection.name
