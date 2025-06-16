@@ -227,7 +227,7 @@ async def chat(
         chat_history = chat_service.get_session_messages(session_id, request.user_id)
         
         # Process through RAG system
-        response = await rag_service.query(
+        response,docs = await rag_service.query(
             query=request.message,
             session_id=session_id,
             user_id=request.user_id
@@ -244,7 +244,8 @@ async def chat(
         return {
             "message": response,
             "session_id": session_id,
-            "user_id": request.user_id
+            "user_id": request.user_id,
+            "docs": docs
         }
     except HTTPException:
         raise

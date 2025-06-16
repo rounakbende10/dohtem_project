@@ -127,6 +127,7 @@ class RAGService:
             1. If the current question refers to or builds upon previous conversation
             2. If the context from previous messages would help answer the current question
             3. If the question is a follow-up or clarification of previous topics
+            NOTE: Answer Yes only if chat history is very relevant
 
             Chat History:
             {chat_context}
@@ -205,7 +206,7 @@ class RAGService:
                 temperature=0.7
             )
             
-            return response.choices[0].message.content
+            return response.choices[0].message.content, results
             
         except Exception as e:
             logger.error(f"Error in RAG query: {str(e)}")
