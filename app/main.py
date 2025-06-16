@@ -68,9 +68,8 @@ async def root():
             "upload": "/upload",
             "query": "/query",
             "sessions": "/sessions",
-            "chat": "/chat/{session_id}",
-            "docs": "/docs"
-        }
+            "chat": "/chat/{session_id}"
+            }
     }
 
 @app.post("/upload")

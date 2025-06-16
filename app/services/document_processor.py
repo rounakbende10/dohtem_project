@@ -72,14 +72,3 @@ class DocumentProcessor:
             text += paragraph.text + "\n"
         return text.strip()
     
-    def process_text(self, text: str, metadata: Dict[str, Any] = None) -> List[LangchainDocument]:
-        """Process raw text and return chunks"""
-        if metadata is None:
-            metadata = {}
-            
-        document = LangchainDocument(
-            page_content=text,
-            metadata=metadata
-        )
-        
-        return self.text_splitter.split_documents([document])
